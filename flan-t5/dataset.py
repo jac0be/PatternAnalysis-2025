@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 
 class BioSummDataset(Dataset):
     def __init__(self, split="train"):
-        self.ds = load_dataset("BioLaySumm/BioLaySumm2025-LaymanRRG-opensource-track")
+        self.ds = load_dataset("BioLaySumm/BioLaySumm2025-LaymanRRG-opensource-track")[split]
 
     def __len__(self):
         return len(self.ds)
@@ -13,8 +13,4 @@ class BioSummDataset(Dataset):
         # we do not care about the image or source
         x = self.ds[i]["radiology_report"]
         y = self.ds[i]["layman_report"]
-        return x, y
-
-
-
-    
+        return x, y    
