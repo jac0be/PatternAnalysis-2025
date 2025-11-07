@@ -2,7 +2,7 @@
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from dataset import BioSummDataset
 
-MODEL_NAME = "google/flan-t5-base"
+MODEL_NAME = "google/flan-t5-large"
 PROMPT = "Output the following word 3 times: 'ready'"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -22,9 +22,9 @@ ds = BioSummDataset(split="train")
 rad_report, layman_sum = ds[0]
 
 PROMPT = (
-    "Summarize the following radiology report for a non-expert in 1-3 sentences. "
-    "Be clear and avoid medical jargon.\n\nReport:\n"
-    f"{rad_report}\n\nLayperson summary:"
+    "You are a helpful medical assistant. Rewrite the radiology report for a layperson "
+    "in 1–3 sentences, avoid jargon, use plain language.\n\n"
+    f"Report:\n{rad_report}\n\nLayperson summary:"
 )
 
 inputs = tokenizer(PROMPT, return_tensors="pt").to(device)

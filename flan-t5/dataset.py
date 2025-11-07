@@ -10,7 +10,7 @@ class BioSummDataset(Dataset):
         return len(self.ds)
 
     def __getitem__(self, i):
-        # we do not care about the image or source
+        # we do not care about the image or source, only text
         x = self.ds[i]["radiology_report"]
         y = self.ds[i]["layman_report"]
         return x, y    
