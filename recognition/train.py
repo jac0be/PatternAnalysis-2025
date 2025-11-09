@@ -1,13 +1,12 @@
 # train.py
 # flan t5 base + LORA training
-import os, math, time, argparse, random
+import os, math, time, argparse, random, json
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.cuda.amp import GradScaler, autocast
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, get_linear_schedule_with_warmup
-from peft import LoraConfig, get_peft_model, TaskType
+from transformers import get_linear_schedule_with_warmup
 import evaluate # for rouge scoring
 
 # Our codebase
@@ -178,8 +177,6 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=a.batch_size, shuffle=True, collate_fn=collate)
     val_loader   = DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate)
     test_loader  = DataLoader(test_ds, batch_size=8, shuffle=False, collate_fn=collate)
-
-
 
     optim = AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd) # adam@ optimiser
     total_updates = math.ceil(len(train_loader) / max(1, a.grad_accum)) * a.epochs # updates =  round_up(batches per epoch /accum) * epochs
