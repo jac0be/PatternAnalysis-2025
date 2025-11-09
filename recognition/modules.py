@@ -1,36 +1,20 @@
-# from hugging face page on t5-base
+# modules.py
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-from dataset import BioSummDataset
+from peft import LoraConfig, get_peft_model, TaskType
 
-MODEL_NAME = "google/flan-t5-large"
-PROMPT = "Output the following word 3 times: 'ready'"
+# returns fast tokenizer for seq2seq models
+def load_tokenizer(model_name: str):
+    return AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
-
-device = "cuda"
-model.to(device)
-
-inputs = tokenizer(PROMPT, return_tensors="pt").to(device)
-output = model.generate(**inputs)
-
-print(tokenizer.decode(output[0], skip_special_tokens=True))
-
-# Try to generate summary of first report
-
-ds = BioSummDataset(split="train")
-rad_report, layman_sum = ds[0]
-
-PROMPT = (
-    "You are a helpful medical assistant. Rewrite the radiology report for a layperson "
-    "in 1–3 sentences, avoid jargon, use plain language.\n\n"
-    f"Report:\n{rad_report}\n\nLayperson summary:"
-)
-
-inputs = tokenizer(PROMPT, return_tensors="pt").to(device)
-output = model.generate(**inputs)
-pred = tokenizer.decode(output[0], skip_special_tokens=True)
-
-print("ORIGINAL REPORT \n", rad_report)
-print("GENERATED \n", pred)
-print("TRUE \n", layman_sum)
+# builds and returns the base-flan-t5 with attached LoRA adapters.
+def build_flan_t5_with_lora(model_name: str, r=8, alpha=16, dropout=0.05):
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    cfg = LoraConfig(
+        task_type=TaskType.SEQ_2_SEQ_LM,
+        r=r,
+        lora_alpha=alpha,
+        lora_dropout=dropout,
+        target_modules=["q", "k", "v", "o"],
+        bias="none",
+    )
+    return get_peft_model(model, cfg)
