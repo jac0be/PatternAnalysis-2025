@@ -97,6 +97,45 @@ def param_counts(m):
     trainable = sum(p.numel() for p in m.parameters() if p.requires_grad)
     return total, trainable
 
+# helper function to make plots and save them.
+def save_curves_and_plots(out_dir, loss_hist, val_hist):
+    try:
+        import csv, matplotlib.pyplot as plt
+        loss_csv = os.path.join(out_dir, "train_loss.csv")
+        with open(loss_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["step", "loss"])
+            w.writeheader()
+            w.writerows(loss_hist)
+
+        val_csv = os.path.join(out_dir, "val_rouge.csv")
+        if val_hist:
+            fields = sorted({k for d in val_hist for k in d.keys()})
+            with open(val_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                w.writeheader()
+                w.writerows(val_hist)
+
+        if loss_hist:
+            plt.figure()
+            plt.plot([d["step"] for d in loss_hist], [d["loss"] for d in loss_hist])
+            plt.xlabel("step"); plt.ylabel("loss"); plt.title("train loss")
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir, "train_loss.png"))
+            plt.close()
+
+        if val_hist:
+            for metric_key in ["rouge1", "rouge2", "rougeL", "rougeLsum"]:
+                plt.figure()
+                xs = [d["epoch"] for d in val_hist]
+                ys = [d.get(metric_key, 0.0) for d in val_hist]
+                plt.plot(xs, ys)
+                plt.xlabel("epoch"); plt.ylabel(metric_key); plt.title(f"validation {metric_key}")
+                plt.tight_layout()
+                plt.savefig(os.path.join(out_dir, f"val_{metric_key}.png"))
+                plt.close()
+    except Exception as e:
+        print({"warn": "plotting failed", "err": str(e)})
+
 def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, loss_hist=None, loss_json_path=None, step_hook=None):
 
     model.train()
@@ -273,46 +312,7 @@ def main():
         # we log for test
         json.dump({k: float(v) for k, v in final_test.items()}, f, indent=2)
 
-    # write CSVs and simple PNGs
-    try:
-        import csv, matplotlib.pyplot as plt
-        loss_csv = os.path.join(a.out_dir, "train_loss.csv")
-        with open(loss_csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["step", "loss"])
-            w.writeheader()
-            w.writerows(loss_hist)
-
-        val_csv = os.path.join(a.out_dir, "val_rouge.csv")
-        if val_hist:
-            fields = sorted({k for d in val_hist for k in d.keys()})
-            with open(val_csv, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=fields)
-                w.writeheader()
-                w.writerows(val_hist)
-
-        # loss plot
-        if loss_hist:
-            plt.figure()
-            plt.plot([d["step"] for d in loss_hist], [d["loss"] for d in loss_hist])
-            plt.xlabel("step"); plt.ylabel("loss"); plt.title("train loss")
-            plt.tight_layout()
-            plt.savefig(os.path.join(a.out_dir, "train_loss.png"))
-            plt.close()
-
-        # plot and log all the rouge metrics
-        if val_hist:
-            for metric_key in ["rouge1", "rouge2", "rougeL", "rougeLsum"]:
-                plt.figure()
-                xs = [d["epoch"] for d in val_hist]
-                ys = [d.get(metric_key, 0.0) for d in val_hist]
-                plt.plot(xs, ys)
-                plt.xlabel("epoch"); plt.ylabel(metric_key); plt.title(f"validation {metric_key}")
-                plt.tight_layout()
-                plt.savefig(os.path.join(a.out_dir, f"val_{metric_key}.png"))
-                plt.close()
-                
-    except Exception as e:
-        print({"warn": "plotting failed", "err": str(e)})
+    save_curves_and_plots(a.out_dir, loss_hist, val_hist)
 
     t_total = round(time.time() - t_start, 2)
 
