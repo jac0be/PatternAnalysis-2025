@@ -97,7 +97,7 @@ def param_counts(m):
     trainable = sum(p.numel() for p in m.parameters() if p.requires_grad)
     return total, trainable
 
-def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, step_hook=None):
+def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, loss_hist=None, loss_json_path=None, step_hook=None):
 
     model.train()
     total, shown, t0 = 0.0, 0.0, time.time()
@@ -129,21 +129,29 @@ def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_
             if step_hook is not None and (steps % 500 == 0):
                 step_hook(steps)
 
+            # logging loss, default is to log every 50 steps
             if steps % log_every == 0:
                 dt = time.time() - t0
                 mean_loss = shown / log_every
                 print({"step": steps, "loss": round(mean_loss, 6), "sec": round(dt, 2)})
+                loss_hist.append({"step": steps, "loss": float(mean_loss)})
+
+                # append loss hist to json, so we can recreate plots
+                if loss_json_path is not None:
+                    with open(loss_json_path, "a", encoding="utf-8") as jf:
+                        jf.write(json.dumps({"step": int(steps), "loss": float(mean_loss)}) + "\n")
+
                 shown = 0.0; t0 = time.time()
+
 
     return total / max(1, steps)
 
-# we peak at the model every 500 steps & ask it to generate a summary of the first report in the dataset.
-# this is only to visually confirm that the model is improving its summaries.
+# sanity check - we peak at the model every 500 steps & ask it to generate a summary of the first report in the dataset.
 @torch.no_grad()
 def model_peak(model, tok, dev, dataset, beams=4, max_new=128):
     
     model.eval()
-    x, y = dataset[0]
+    x, y = dataset[0] # we pick the same report each time so we can see how it improves
     enc = tok([PROMPT.format(rad_report=x)], return_tensors="pt", truncation=True, max_length=1024).to(dev)
 
     out = model.generate(
@@ -159,16 +167,17 @@ def model_peak(model, tok, dev, dataset, beams=4, max_new=128):
     print(f"Radiology Report: \n{x}")
     print(f"True: \n {y}")
     print(f"LLM: \n {pred}")
-    print("----------------------------")
+    print("-----------------------------")
 
 def main():
 
     a = args_parse()
     os.makedirs(a.out_dir, exist_ok=True)
+
     set_seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-    t_start = time.time() # for logging
+    t_start = time.time() # for logging train time
 
     tok = load_tokenizer(a.model_name)
     model = build_flan_t5_with_lora(
@@ -191,6 +200,13 @@ def main():
     warm = min(a.warmup_steps, max(1, total_updates // 20))
     sched = get_linear_schedule_with_warmup(optim, num_warmup_steps=warm, num_training_steps=total_updates)
     scaler = GradScaler(enabled=(a.fp16 and dev == "cuda"))
+
+    # log loss and val
+    loss_hist = []
+    val_hist = []
+    # we also save the histories so we can recreate the plots if needed.
+    loss_json_path = os.path.join(a.out_dir, "train_loss.jsonl")
+    val_json_path  = os.path.join(a.out_dir, "val_rouge.jsonl")
 
     # model peak prior to training
     model_peak(model, tok, dev, train_ds, beams=a.val_beams, max_new=a.val_max_new_tokens)
@@ -219,8 +235,9 @@ def main():
     for ep in range(1, a.epochs + 1):
         print(f"\nepoch {ep}/{a.epochs}")
         tr_loss = run_one_epoch(
-            model, train_loader, optim, sched, scaler, dev,
-            a.grad_accum, a.fp16, log_every=a.grad_accum, step_hook=_probe # <- model peak here
+            model, train_loader, optim, sched, scaler, dev, a.grad_accum, a.fp16, # training stuff
+            log_every=50, loss_hist=loss_hist, loss_json_path=loss_json_path, # logging stuff
+            step_hook=_probe # < - model peak here
         )
         print({"train_loss": round(float(tr_loss), 6)})
 
@@ -228,16 +245,23 @@ def main():
         if scores:
             msg = {k: round(v, 4) for k, v in scores.items()}
             print({"val": msg})
+            row = {"epoch": ep, **{k: float(v) for k, v in scores.items()}}
+            val_hist.append(row)
+
+            # write json
+            with open(val_json_path, "a", encoding="utf-8") as jf:
+                jf.write(json.dumps(row) + "\n")
+            
             cur = scores.get("rougeLsum", scores.get("rougeL", -1.0))
             if cur > best:
                 best = cur
-                model.save_pretrained(a.out_dir)
+                model.save_pretrained(a.out_dir) # model epoch checkpoint
                 tok.save_pretrained(a.out_dir)
-                # logging + print to show which epoch got saved
+                # logging + print to show output dir
                 with open(os.path.join(a.out_dir, "best.json"), "w", encoding="utf-8") as f:
                     f.write(str({"epoch": ep, "metric": cur}))
                 print({"save": a.out_dir, "metric": round(cur, 4)})
-    # TRAINING DONE!
+    # ALL EPOCHS DONE!
 
     # Eval: Validation
     final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
@@ -247,10 +271,49 @@ def main():
     print({"final_test": {k: round(v, 4) for k, v in final_test.items()}})
     with open(os.path.join(a.out_dir, "test_metrics.json"), "w", encoding="utf-8") as f:
         # we log for test
-        import json
         json.dump({k: float(v) for k, v in final_test.items()}, f, indent=2)
 
-    
+    # write CSVs and simple PNGs
+    try:
+        import csv, matplotlib.pyplot as plt
+        loss_csv = os.path.join(a.out_dir, "train_loss.csv")
+        with open(loss_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["step", "loss"])
+            w.writeheader()
+            w.writerows(loss_hist)
+
+        val_csv = os.path.join(a.out_dir, "val_rouge.csv")
+        if val_hist:
+            fields = sorted({k for d in val_hist for k in d.keys()})
+            with open(val_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                w.writeheader()
+                w.writerows(val_hist)
+
+        # loss plot
+        if loss_hist:
+            plt.figure()
+            plt.plot([d["step"] for d in loss_hist], [d["loss"] for d in loss_hist])
+            plt.xlabel("step"); plt.ylabel("loss"); plt.title("train loss")
+            plt.tight_layout()
+            plt.savefig(os.path.join(a.out_dir, "train_loss.png"))
+            plt.close()
+
+        # plot and log all the rouge metrics
+        if val_hist:
+            for metric_key in ["rouge1", "rouge2", "rougeL", "rougeLsum"]:
+                plt.figure()
+                xs = [d["epoch"] for d in val_hist]
+                ys = [d.get(metric_key, 0.0) for d in val_hist]
+                plt.plot(xs, ys)
+                plt.xlabel("epoch"); plt.ylabel(metric_key); plt.title(f"validation {metric_key}")
+                plt.tight_layout()
+                plt.savefig(os.path.join(a.out_dir, f"val_{metric_key}.png"))
+                plt.close()
+                
+    except Exception as e:
+        print({"warn": "plotting failed", "err": str(e)})
+
     t_total = round(time.time() - t_start, 2)
 
     # dump a report after all epochs. Only static model + system details here.
@@ -274,7 +337,6 @@ def main():
     with open(os.path.join(a.out_dir, "train_report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     print({"train_report": report})
-
 
 if __name__ == "__main__":
     main()
