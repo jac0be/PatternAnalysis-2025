@@ -64,17 +64,6 @@ class Batchify:
         labels[labels == self.pad_id] = -100
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"], "labels": labels}
 
-
-def attach_lora(model, r, alpha, drop):
-    cfg = LoraConfig(
-        task_type=TaskType.SEQ_2_SEQ_LM,
-        r=r, lora_alpha=alpha, lora_dropout=drop,
-        # NOTE: these match t5's projection layers
-        target_modules=["q","k","v","o"],
-        bias="none"
-    )
-    return get_peft_model(model, cfg)
-
 @torch.no_grad()
 def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
 
@@ -183,10 +172,13 @@ def main():
 
     train_ds = BioSummDataset(split="train")
     val_ds   = BioSummDataset(split="validation")
+    test_ds  = BioSummDataset(split="test")
 
     collate = Batchify(tok, a.max_input_len, a.max_target_len)
     train_loader = DataLoader(train_ds, batch_size=a.batch_size, shuffle=True, collate_fn=collate)
     val_loader   = DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate)
+    test_loader  = DataLoader(test_ds, batch_size=8, shuffle=False, collate_fn=collate)
+
 
 
     optim = AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd) # adam@ optimiser
@@ -225,9 +217,17 @@ def main():
                     f.write(str({"epoch": ep, "metric": cur}))
                 print({"save": a.out_dir, "metric": round(cur, 4)})
 
-    final = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
-    if final:
-        print({"final_val": {k: round(v, 4) for k, v in final.items()}})
+    # Eval: Validation
+    final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
+    print({"final_val": {k: round(v, 4) for k, v in final_val.items()}})
+    # Eval: Test
+    final_test = score_rouge(model, tok, test_loader, dev, a.val_max_new_tokens, a.val_beams)
+    print({"final_test": {k: round(v, 4) for k, v in final_test.items()}})
+    with open(os.path.join(a.out_dir, "test_metrics.json"), "w", encoding="utf-8") as f:
+        # we log for test
+        import json
+        json.dump({k: float(v) for k, v in final_test.items()}, f, indent=2)
+
 
 if __name__ == "__main__":
     main()

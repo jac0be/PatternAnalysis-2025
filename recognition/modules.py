@@ -14,6 +14,7 @@ def build_flan_t5_with_lora(model_name="google/flan-t5-base", r=8, alpha=16, dro
         r=r,
         lora_alpha=alpha,
         lora_dropout=dropout,
+        # NOTE: these match t5's projection layers
         target_modules=["q", "k", "v", "o"],
         bias="none",
     )
