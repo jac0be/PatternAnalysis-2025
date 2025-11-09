@@ -75,7 +75,6 @@ def attach_lora(model, r, alpha, drop):
     )
     return get_peft_model(model, cfg)
 
-
 @torch.no_grad()
 def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
 
@@ -103,7 +102,6 @@ def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
     out = r.compute(predictions=preds, references=refs, use_stemmer=True)
 
     return {k: float(out[k]) for k in ("rouge1","rouge2","rougeL","rougeLsum") if k in out}
-
 
 def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, step_hook=None):
 
@@ -178,8 +176,10 @@ def main():
 
     tok = load_tokenizer(a.model_name)
     model = build_flan_t5_with_lora(
-        model_name=a.model_name, r=a.lora_r, alpha=a.lora_alpha, dropout=a.lora_dropout # rest of params are left as default
+        model_name=a.model_name, r=a.lora_r, alpha=a.lora_alpha, dropout=a.lora_dropout
     )
+    model.config.use_cache = False
+    model.to(dev)
 
     train_ds = BioSummDataset(split="train")
     val_ds   = BioSummDataset(split="validation")
