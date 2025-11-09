@@ -8,9 +8,11 @@ from torch.optim import AdamW
 from torch.cuda.amp import GradScaler, autocast
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, get_linear_schedule_with_warmup
 from peft import LoraConfig, get_peft_model, TaskType
-import evaluate
+import evaluate # for rouge scoring
 
+# Our codebase
 from dataset import BioSummDataset
+from modules import load_tokenizer, build_flan_t5_with_lora
 
 PROMPT = (
     "You are a helpful medical assistant. Rewrite the radiology report for a layperson "
@@ -143,7 +145,8 @@ def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_
 
     return total / max(1, steps)
 
-# we peak at the model every 500 steps & ask it to generate a summary of the first report in the datset.
+# we peak at the model every 500 steps & ask it to generate a summary of the first report in the dataset.
+# this is only to visually confirm that the model is improving its summaries.
 @torch.no_grad()
 def model_peak(model, tok, dev, dataset, beams=4, max_new=128):
     
@@ -173,11 +176,10 @@ def main():
     set_seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-    tok = AutoTokenizer.from_pretrained(a.model_name, use_fast=True)
-    model = AutoModelForSeq2SeqLM.from_pretrained(a.model_name)
-    model = attach_lora(model, a.lora_r, a.lora_alpha, a.lora_dropout)
-    model.config.use_cache = False # disable KV cache during training
-    model.to(dev)
+    tok = load_tokenizer(a.model_name)
+    model = build_flan_t5_with_lora(
+        model_name=a.model_name, r=a.lora_r, alpha=a.lora_alpha, dropout=a.lora_dropout # rest of params are left as default
+    )
 
     train_ds = BioSummDataset(split="train")
     val_ds   = BioSummDataset(split="validation")
@@ -196,7 +198,7 @@ def main():
     # model peak prior to training
     model_peak(model, tok, dev, train_ds, beams=a.val_beams, max_new=a.val_max_new_tokens)
 
-    # we pass this as a function reference to our epoch trainer, runs every 500 steps.
+    # we pass this _probe as a function reference to our epoch trainer, runs every 500 steps.
     def _probe(_step):
         model_peak(model, tok, dev, train_ds, beams=a.val_beams, max_new=a.val_max_new_tokens)
 
@@ -205,7 +207,7 @@ def main():
         print(f"\nepoch {ep}/{a.epochs}")
         tr_loss = run_one_epoch(
             model, train_loader, optim, sched, scaler, dev,
-            a.grad_accum, a.fp16, log_every=a.grad_accum, step_hook=_probe
+            a.grad_accum, a.fp16, log_every=a.grad_accum, step_hook=_probe # <- here
         )
         print({"train_loss": round(float(tr_loss), 6)})
 

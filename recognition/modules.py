@@ -7,7 +7,7 @@ def load_tokenizer(model_name: str):
     return AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
 # builds and returns the base-flan-t5 with attached LoRA adapters.
-def build_flan_t5_with_lora(model_name: str, r=8, alpha=16, dropout=0.05):
+def build_flan_t5_with_lora(model_name="google/flan-t5-base", r=8, alpha=16, dropout=0.05, use_cache=False, dev="cuda"):
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     cfg = LoraConfig(
         task_type=TaskType.SEQ_2_SEQ_LM,
@@ -17,4 +17,9 @@ def build_flan_t5_with_lora(model_name: str, r=8, alpha=16, dropout=0.05):
         target_modules=["q", "k", "v", "o"],
         bias="none",
     )
-    return get_peft_model(model, cfg)
+
+    model = get_peft_model(model, cfg)
+    model.config.use_cache=use_cache
+    model.to(dev)
+
+    return model
