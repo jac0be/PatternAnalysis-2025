@@ -1,5 +1,5 @@
 # train.py
-# flan t5 base + LORA training
+# flan t5 base + LORA training.
 import os, math, time, argparse, random, json
 import numpy as np
 import torch
@@ -91,6 +91,12 @@ def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
 
     return {k: float(out[k]) for k in ("rouge1","rouge2","rougeL","rougeLsum") if k in out}
 
+# small helper for logging model params
+def param_counts(m):
+    total = sum(p.numel() for p in m.parameters())
+    trainable = sum(p.numel() for p in m.parameters() if p.requires_grad)
+    return total, trainable
+
 def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, step_hook=None):
 
     model.train()
@@ -162,6 +168,8 @@ def main():
     set_seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
+    t_start = time.time() # for logging
+
     tok = load_tokenizer(a.model_name)
     model = build_flan_t5_with_lora(
         model_name=a.model_name, r=a.lora_r, alpha=a.lora_alpha, dropout=a.lora_dropout
@@ -191,12 +199,28 @@ def main():
     def _probe(_step):
         model_peak(model, tok, dev, train_ds, beams=a.val_beams, max_new=a.val_max_new_tokens)
 
+    total_params, trainable_params = param_counts(model)
+
+    # Get gpu name + vram for final report
+    gpu_name, vram_gb = None, None
+    if dev == "cuda":
+        try:
+            gpu_name = torch.cuda.get_device_name(0)
+        except Exception:
+            gpu_name = "unknown"
+        try:
+            _, total = torch.cuda.mem_get_info()
+            vram_gb = round(total / (1024**3), 2)
+        except Exception:
+            vram_gb = None
+
+    # TRAINING LOOP
     best = -1.0
     for ep in range(1, a.epochs + 1):
         print(f"\nepoch {ep}/{a.epochs}")
         tr_loss = run_one_epoch(
             model, train_loader, optim, sched, scaler, dev,
-            a.grad_accum, a.fp16, log_every=a.grad_accum, step_hook=_probe # <- here
+            a.grad_accum, a.fp16, log_every=a.grad_accum, step_hook=_probe # <- model peak here
         )
         print({"train_loss": round(float(tr_loss), 6)})
 
@@ -213,6 +237,7 @@ def main():
                 with open(os.path.join(a.out_dir, "best.json"), "w", encoding="utf-8") as f:
                     f.write(str({"epoch": ep, "metric": cur}))
                 print({"save": a.out_dir, "metric": round(cur, 4)})
+    # TRAINING DONE!
 
     # Eval: Validation
     final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
@@ -224,6 +249,31 @@ def main():
         # we log for test
         import json
         json.dump({k: float(v) for k, v in final_test.items()}, f, indent=2)
+
+    
+    t_total = round(time.time() - t_start, 2)
+
+    # dump a report after all epochs. Only static model + system details here.
+    report = {
+        "model_name": a.model_name,
+        "total_params": int(total_params),
+        "trainable_params": int(trainable_params),
+        "lora_r": a.lora_r,
+        "lora_alpha": a.lora_alpha,
+        "lora_dropout": a.lora_dropout,
+        "gpu_name": gpu_name,
+        "gpu_vram_gb": vram_gb,
+        "epochs": a.epochs,
+        "batch_size": a.batch_size,
+        "grad_accum": a.grad_accum,
+        "warmup_steps": a.warmup_steps,
+        "lr": a.lr,
+        "weight_decay": a.wd,
+        "total_training_seconds": t_total,
+    }
+    with open(os.path.join(a.out_dir, "train_report.json"), "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print({"train_report": report})
 
 
 if __name__ == "__main__":

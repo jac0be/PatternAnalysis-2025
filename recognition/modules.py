@@ -19,4 +19,4 @@ def build_flan_t5_with_lora(model_name="google/flan-t5-base", r=8, alpha=16, dro
         bias="none",
     )
 
-    return get_peft_model(model, cfg)
+    return get_peft_model(model, cfg) # we convert the model to cuda outside this function, to prevent device mismatch issues
