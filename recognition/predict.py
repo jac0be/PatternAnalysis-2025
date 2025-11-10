@@ -1,3 +1,4 @@
+# predict.py
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
@@ -34,3 +35,15 @@ def preview(model, tok, dev, report_text, ref=None, prompt=None, beams=4, max_ne
     if ref: print(f"True:\n{ref}\n")
     print(f"Pred:\n{pred}\n--------------------------")
     return pred
+
+def main():
+    print("Chat with your FLAN-T5 model. Type 'exit' to quit.\n")
+    while True:
+        msg = input("You: ").strip()
+        if msg.lower() in {"exit", "quit"}:
+            break
+        reply = predict(msg)
+        print("Model:", reply, "\n")
+
+if __name__ == "__main__":
+    main()
