@@ -136,6 +136,7 @@ def save_curves_and_plots(out_dir, loss_hist, val_hist):
     except Exception as e:
         print({"warn": "plotting failed", "err": str(e)})
 
+# Epoch logic: 150k rows
 def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, loss_hist=None, loss_json_path=None, step_hook=None):
 
     model.train()
@@ -340,3 +341,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
