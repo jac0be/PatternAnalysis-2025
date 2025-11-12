@@ -22,8 +22,8 @@ PROMPT = (
 def args_parse():
     p = argparse.ArgumentParser()
     p.add_argument("--model_name", default="google/flan-t5-base")
-    p.add_argument("--out_dir", default="runs/flan_t5_lora")
-    p.add_argument("--epochs", type=int, default=3)
+    p.add_argument("--out_dir", default="runs/flan_t5_lora_long_12_11")
+    p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--wd", type=float, default=0.01)
     p.add_argument("--warmup_steps", type=int, default=1000)
@@ -97,45 +97,6 @@ def param_counts(m):
     trainable = sum(p.numel() for p in m.parameters() if p.requires_grad)
     return total, trainable
 
-# helper function to make plots and save them.
-def save_curves_and_plots(out_dir, loss_hist, val_hist):
-    try:
-        import csv, matplotlib.pyplot as plt
-        loss_csv = os.path.join(out_dir, "train_loss.csv")
-        with open(loss_csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["step", "loss"])
-            w.writeheader()
-            w.writerows(loss_hist)
-
-        val_csv = os.path.join(out_dir, "val_rouge.csv")
-        if val_hist:
-            fields = sorted({k for d in val_hist for k in d.keys()})
-            with open(val_csv, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=fields)
-                w.writeheader()
-                w.writerows(val_hist)
-
-        if loss_hist:
-            plt.figure()
-            plt.plot([d["step"] for d in loss_hist], [d["loss"] for d in loss_hist])
-            plt.xlabel("step"); plt.ylabel("loss"); plt.title("train loss")
-            plt.tight_layout()
-            plt.savefig(os.path.join(out_dir, "train_loss.png"))
-            plt.close()
-
-        if val_hist:
-            for metric_key in ["rouge1", "rouge2", "rougeL", "rougeLsum"]:
-                plt.figure()
-                xs = [d["epoch"] for d in val_hist]
-                ys = [d.get(metric_key, 0.0) for d in val_hist]
-                plt.plot(xs, ys)
-                plt.xlabel("epoch"); plt.ylabel(metric_key); plt.title(f"validation {metric_key}")
-                plt.tight_layout()
-                plt.savefig(os.path.join(out_dir, f"val_{metric_key}.png"))
-                plt.close()
-    except Exception as e:
-        print({"warn": "plotting failed", "err": str(e)})
-
 # Epoch logic: 150k rows
 def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_every=50, loss_hist=None, loss_json_path=None, step_hook=None):
 
@@ -180,6 +141,7 @@ def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_
                 if loss_json_path is not None:
                     with open(loss_json_path, "a", encoding="utf-8") as jf:
                         jf.write(json.dumps({"step": int(steps), "loss": float(mean_loss)}) + "\n")
+        
 
                 shown = 0.0; t0 = time.time()
 
@@ -303,18 +265,12 @@ def main():
                 print({"save": a.out_dir, "metric": round(cur, 4)})
     # ALL EPOCHS DONE!
 
-    # Eval: Validation
+    # Eval
     final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
     print({"final_val": {k: round(v, 4) for k, v in final_val.items()}})
-    # Eval: Test
-    final_test = score_rouge(model, tok, test_loader, dev, a.val_max_new_tokens, a.val_beams)
-    print({"final_test": {k: round(v, 4) for k, v in final_test.items()}})
-    with open(os.path.join(a.out_dir, "test_metrics.json"), "w", encoding="utf-8") as f:
-        # we log for test
-        json.dump({k: float(v) for k, v in final_test.items()}, f, indent=2)
 
-    save_curves_and_plots(a.out_dir, loss_hist, val_hist)
-
+    # NOTE: We make plots/csvs after training using eval.py
+    
     t_total = round(time.time() - t_start, 2)
 
     # dump a report after all epochs. Only static model + system details here.

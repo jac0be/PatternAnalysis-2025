@@ -1,5 +1,7 @@
 # predict.py
+# 
 import torch
+import sys
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 DEFAULT_PROMPT = (
@@ -36,13 +38,16 @@ def preview(model, tok, dev, report_text, ref=None, prompt=None, beams=4, max_ne
     print(f"Pred:\n{pred}\n--------------------------")
     return pred
 
+# Usage: python predict.py [OPTIONAL:directory of trained model, uses default if unspecified]
 def main():
-    print("Chat with your FLAN-T5 model. Type 'exit' to quit.\n")
+    ckpt_dir = sys.argv[1] if len(sys.argv) > 1 else "runs/flan_t5_lora"
+
+    print(f"Chat with your FLAN-T5 model ({ckpt_dir}). Type 'exit' to quit.\n")
     while True:
         msg = input("You: ").strip()
         if msg.lower() in {"exit", "quit"}:
             break
-        reply = predict(msg)
+        reply = predict(msg, ckpt_dir=ckpt_dir)
         print("Model:", reply, "\n")
 
 if __name__ == "__main__":

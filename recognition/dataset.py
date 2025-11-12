@@ -14,3 +14,13 @@ class BioSummDataset(Dataset):
         x = self.ds[i]["radiology_report"]
         y = self.ds[i]["layman_report"]
         return x, y    
+
+# Test main: prints out the first 10 in the dataset    
+if __name__ == "__main__":
+    train_ds = BioSummDataset(split="train")
+    val_ds   = BioSummDataset(split="validation")
+    test_ds  = BioSummDataset(split="test")
+    for i in range(0, 10):
+        print(f"Train [{i}]: {train_ds[i][0]}")
+        print(f"Val [{i}]: {val_ds[i][0]}")
+        print(f"Test [{i}]: {test_ds[i][0]}")
