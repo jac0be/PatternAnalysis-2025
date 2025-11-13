@@ -19,6 +19,7 @@ PROMPT = (
     "Report:\n{rad_report}\n\nLayperson summary:"
 )
 
+# All params have default values. To re-produce our results just run 'python train.py'
 def args_parse():
     p = argparse.ArgumentParser()
     p.add_argument("--model_name", default="google/flan-t5-base") 
@@ -38,13 +39,14 @@ def args_parse():
     p.add_argument("--lora_dropout", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=1337)
     p.add_argument("--fp16", action="store_true")
+    p.add_argument("--split", default=False)
     return p.parse_args()
 
 def set_seed(s):
     random.seed(s); np.random.seed(s)
     torch.manual_seed(s); torch.cuda.manual_seed_all(s)
 
-# Collates report, summary pairs into tokenised encoder/decoder tensors.
+# Collates report,summary pairs into tokenised encoder/decoder tensors.
 class Batchify:
 
     def __init__(self, tok, max_in, max_out):
@@ -79,7 +81,7 @@ def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
             attention_mask=b["attention_mask"],
             max_new_tokens=max_new_tokens,
             num_beams=beams,
-            early_stopping=True # only 1-3 max sentences anyway
+            early_stopping=True # only 1-3 max sentences
         )
 
         # put the pads back so decode handles -100s
@@ -191,14 +193,13 @@ def main():
     model.to(dev)
     
     # Datasets (test_ds is unused)
-    train_ds = BioSummDataset(split="train")
+    train_ds = BioSummDataset(split="train", do_train_split=a.split) 
     val_ds   = BioSummDataset(split="validation")
-    test_ds  = BioSummDataset(split="test")
+    test_ds  = BioSummDataset(split="test", do_train_split=a.split)
     collate = Batchify(tok, a.max_input_len, a.max_target_len)
     train_loader = DataLoader(train_ds, batch_size=a.batch_size, shuffle=True, collate_fn=collate)
     val_loader   = DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate)
     test_loader  = DataLoader(test_ds, batch_size=8, shuffle=False, collate_fn=collate)
-
 
     optim = AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd) # adam@ optimiser
     total_updates = math.ceil(len(train_loader) / max(1, a.grad_accum)) * a.epochs # updates =  round_up(batches per epoch /accum) * epochs
@@ -272,6 +273,8 @@ def main():
     # Eval
     final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
     print({"final_val": {k: round(v, 4) for k, v in final_val.items()}})
+    final_test = score_rouge(model, tok, test_loader, dev, a.val_max_new_tokens, a.val_beams)
+    print({"final_test": {k: round(v, 4) for k, v in final_test.items()}}) # Will output 0 if there's no split.
 
     # NOTE: We make plots/csvs after training using eval.py and the saved jsonl's
     
