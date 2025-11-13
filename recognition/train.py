@@ -21,12 +21,12 @@ PROMPT = (
 
 def args_parse():
     p = argparse.ArgumentParser()
-    p.add_argument("--model_name", default="google/flan-t5-base")
-    p.add_argument("--out_dir", default="runs/flan_t5_lora_long_12_11")
-    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--model_name", default="google/flan-t5-base") 
+    p.add_argument("--out_dir", default="runs/flan_t5_lora")
+    p.add_argument("--epochs", type=int, default=5)
     p.add_argument("--lr", type=float, default=2e-4)
-    p.add_argument("--wd", type=float, default=0.01)
-    p.add_argument("--warmup_steps", type=int, default=1000)
+    p.add_argument("--wd", type=float, default=0.01) 
+    p.add_argument("--warmup_steps", type=int, default=500)
     p.add_argument("--batch_size", type=int, default=2)
     p.add_argument("--grad_accum", type=int, default=8)
     p.add_argument("--max_input_len", type=int, default=1024)
@@ -44,6 +44,7 @@ def set_seed(s):
     random.seed(s); np.random.seed(s)
     torch.manual_seed(s); torch.cuda.manual_seed_all(s)
 
+# Collates report, summary pairs into tokenised encoder/decoder tensors.
 class Batchify:
 
     def __init__(self, tok, max_in, max_out):
@@ -63,6 +64,7 @@ class Batchify:
         labels[labels == self.pad_id] = -100
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"], "labels": labels}
 
+# Computes model rouge
 @torch.no_grad()
 def score_rouge(model, tok, loader, dev, max_new_tokens, beams):
 
@@ -171,11 +173,11 @@ def model_peak(model, tok, dev, dataset, beams=4, max_new=128):
     print(f"LLM: \n {pred}")
     print("-----------------------------")
 
+# Main training loop
 def main():
-
+    # Setup
     a = args_parse()
     os.makedirs(a.out_dir, exist_ok=True)
-
     set_seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -187,15 +189,16 @@ def main():
     )
     model.config.use_cache = False
     model.to(dev)
-
+    
+    # Datasets (test_ds is unused)
     train_ds = BioSummDataset(split="train")
     val_ds   = BioSummDataset(split="validation")
     test_ds  = BioSummDataset(split="test")
-
     collate = Batchify(tok, a.max_input_len, a.max_target_len)
     train_loader = DataLoader(train_ds, batch_size=a.batch_size, shuffle=True, collate_fn=collate)
     val_loader   = DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate)
     test_loader  = DataLoader(test_ds, batch_size=8, shuffle=False, collate_fn=collate)
+
 
     optim = AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd) # adam@ optimiser
     total_updates = math.ceil(len(train_loader) / max(1, a.grad_accum)) * a.epochs # updates =  round_up(batches per epoch /accum) * epochs
@@ -219,7 +222,7 @@ def main():
 
     total_params, trainable_params = param_counts(model)
 
-    # Get gpu name + vram for final report
+    # For final report
     gpu_name, vram_gb = None, None
     if dev == "cuda":
         try:
@@ -243,7 +246,8 @@ def main():
         )
         print({"train_loss": round(float(tr_loss), 6)})
 
-        scores = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
+        # epoch done, time for validation
+        scores = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams) 
         if scores:
             msg = {k: round(v, 4) for k, v in scores.items()}
             print({"val": msg})
@@ -269,7 +273,7 @@ def main():
     final_val = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams)
     print({"final_val": {k: round(v, 4) for k, v in final_val.items()}})
 
-    # NOTE: We make plots/csvs after training using eval.py
+    # NOTE: We make plots/csvs after training using eval.py and the saved jsonl's
     
     t_total = round(time.time() - t_start, 2)
 
