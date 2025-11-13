@@ -19,7 +19,7 @@ We use a pretrained FLAN-T5-base model with LoRA adapters to efficiently fine-tu
 ## 2. Background
 
 <div style="float: right; margin-left: 20px;">
-  <img src="assets/flan_t5_architecture.png" width="300"/>
+  <img src="images/flan_t5_architecture.png" width="300"/>
 </div>
 
 FLAN-T5 is a variant of Google's T5 that has been instruction-tuned on a large number of diverse tasks. Whilst the original T5 was already a strong encoder-decoder transformer, FLAN-T5 is trained specifically to follow natural language instructions, making it more suitable at tasks phrased as "Rewrite this", "Summarise", or "Explain this".
@@ -33,9 +33,6 @@ FLAN-T5 uses the classic seq2seq structure:
   - previous generated tokens (what has already been written by the model)
 
 FLAN-T5 is also relatively accessible compared to more complex LLMs, which require more VRAM to fine-tune.
-
-<br>
-<br>
 
 ### LoRA (Low-Rank Adaptation)
 
@@ -198,7 +195,7 @@ VRAM usage generally hovered around 15.4GB during training.
 We run training over all 150k rows across 5 epochs, using the default parameters as defined above. As said above, evaluation was executed against the default validation set.
 
 ### 7.1 Training Loss
-![Training Loss Curve](assets/train_loss.png)
+![Training Loss Curve](images/train_loss.png)
 
 The training loss curve shows a steep drop during the first ~2,000 steps, indicating that the model rapidly learns the relationship between reports and their summaries. This is not a suprise, considering the richness of each epoch. After this convergence, however, we begin to see diminishing returns, with loss slowly decreasing. This reflects smaller refinements to phrasing and style. 
 
@@ -207,7 +204,7 @@ Note that the periodic spikes at the start of each epoch are an artefact of grad
 ### 7.2 Validation
 
 #### Full-Val: 5 Epochs
-![Validation ROUGE Scores](assets/val_rouge.png)
+![Validation ROUGE Scores](images/val_rouge.png)
 
 | Epoch | ROUGE-1 | ROUGE-2 | ROUGE-L | ROUGE-Lsum |
 |-------|---------|---------|---------|------------|
@@ -227,7 +224,7 @@ The best checkpoint achieves:
 
 #### Multi-Val: 2 Epochs
 
- ![Multi-Val Rouge](assets/multi_val.png)
+ ![Multi-Val Rouge](images/multi_val.png)
 
 To make this behaviour clearer, we also trained the model for two epochs while performing four validation checks per epoch. This finer-grained view reveals a sharp jump in ROUGE by the first epoch evaluation (around 25% through epoch 1), confirming that most of the performance gain occurs very early in training. After this point, the curves flatten noticeably, showing that later updates provide only small refinements.
 
