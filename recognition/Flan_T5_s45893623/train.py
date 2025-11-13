@@ -240,13 +240,13 @@ def main():
     for ep in range(1, a.epochs + 1):
         print(f"\nepoch {ep}/{a.epochs}")
         tr_loss = run_one_epoch(
-            model, train_loader, optim, sched, scaler, dev, a.grad_accum, a.fp16, # training stuff
-            log_every=50, loss_hist=loss_hist, loss_json_path=loss_json_path, # logging stuff
+            model, train_loader, optim, sched, scaler, dev, a.grad_accum, a.fp16, # training params
+            log_every=50, loss_hist=loss_hist, loss_json_path=loss_json_path, # logging params
             step_hook=_probe # < - model peak here
         )
         print({"train_loss": round(float(tr_loss), 6)})
 
-        # epoch done, time for validation
+        # one epoch done, time for validation
         scores = score_rouge(model, tok, val_loader, dev, a.val_max_new_tokens, a.val_beams) 
         if scores:
             msg = {k: round(v, 4) for k, v in scores.items()}

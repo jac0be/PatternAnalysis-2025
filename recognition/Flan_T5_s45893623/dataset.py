@@ -6,12 +6,12 @@ class BioSummDataset(Dataset):
     def __init__(self, split="train", do_train_split=False):
         ds = load_dataset("BioLaySumm/BioLaySumm2025-LaymanRRG-opensource-track")
         # We optionally split the training data to get a held-out test set.
-        if do_train_split == True and split in ["train", "test"]:
+        if do_train_split == True and split in ["train", "test"]: # NOTE: You must construct both train and test using do_train_split=True, otherwise the splits won't be executed for both
             full_train = ds["train"]
             split_ds = full_train.train_test_split(test_size=0.1, seed=42) # keep seed set at 42 to keep splits consistent.
 
             self.ds = split_ds["train"] if split == "train" else split_ds["test"]
-        # Otherwise use the default train,validation,test split in BioSumm (NOTE: test does not contain layman summary)
+        # Otherwise use the default train,validation,test split in BioSumm (NOTE: default test does not contain layman summary)
         else:
             self.ds = ds[split]
 
