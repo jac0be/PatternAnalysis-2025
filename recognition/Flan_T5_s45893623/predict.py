@@ -28,13 +28,13 @@ def predict(report_text, ckpt_dir="runs/flan_t5_lora", prompt=None, beams=4, max
     )
     return tok.batch_decode(out, skip_special_tokens=True)[0]
 
-# Loads up an interactive check. Uses same default run dir as train.py. If idx is set, it computes the summary for that report[idx] and exits.
+# Loads up an interactive check. Uses same default run dir as train.py. If idx is set, it computes the summary for that val_report[idx] and exits.
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt", type=str, default="runs/flan_t5_lora",
                    help="Checkpoint directory")
     p.add_argument("--idx", type=int, default=None,
-                   help="Index of test-set report to evaluate")
+                   help="Index of val-set report to evaluate")
     args = p.parse_args()
 
     # If idx is provided: run prediction on that test report

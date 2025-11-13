@@ -123,7 +123,7 @@ def run_one_epoch(model, loader, optim, sched, scaler, dev, accum, use_amp, log_
 
         if i % accum == 0:
             scaler.unscale_(optim)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # prevents wild spikes
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # prevents spikes
             scaler.step(optim); scaler.update()
             optim.zero_grad(set_to_none=True)
 
@@ -192,7 +192,7 @@ def main():
     model.config.use_cache = False
     model.to(dev)
     
-    # Datasets (test_ds is unused)
+    # Datasets
     train_ds = BioSummDataset(split="train", do_train_split=a.split) 
     val_ds   = BioSummDataset(split="validation")
     test_ds  = BioSummDataset(split="test", do_train_split=a.split)
