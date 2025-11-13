@@ -7,3 +7,6 @@ sentencepiece==0.2.1
 numpy==2.3.3
 matplotlib==3.10.7
 tqdm==4.67.1
+absl-py==2.3.1
+nltk==3.9.2
+rouge_score==0.1.2
