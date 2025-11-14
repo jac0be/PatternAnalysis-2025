@@ -22,6 +22,7 @@ We use a pretrained FLAN-T5-base model with LoRA adapters to efficiently fine-tu
   <img src="images/flan_t5_architecture.png" width="300"/>
 </div>
 
+<br>
 FLAN-T5 is a variant of Google's T5 that has been instruction-tuned on a large number of diverse tasks. Whilst the original T5 was already a strong encoder-decoder transformer, FLAN-T5 is trained specifically to follow natural language instructions, making it more suitable at tasks phrased as "Rewrite this", "Summarise", or "Explain this".
 
 ### Encoder/Decoder Architecture
@@ -119,11 +120,11 @@ The dataset provides the following splits by default:
 
 However, the `test` split is not useful for evaluation as it omits layman summaries. Hence, we optionally compute a `90:10` `train:test` split for hyperparameter tuning. A 10% hold-out is sufficient given the large dataset size, and avoids unneccesary computation during evaluation.
 
-The final validation uses the default `validation` set, which remains untouched by our splits. This curated set avoids the noise from random partitioning and ensures that final results are comparable and reproducable. 
+The final evaluation uses the `validation` set by default, which remains untouched by our splits. This fixed validation set avoids the noise from random partitioning and ensures that final results are comparable and reproducable. 
 
 ### 5.3 Prompts & Preprocessing
 
-Minimal preprocessing was applied. We justify this as directly modifying the text may introduce bias and reduce real-world performance. We let FLAN-T5 handle and model any inconcistencies in language.
+Minimal preprocessing was applied. We justify this as directly modifying the text may reduce our model's real-world performance, as we want our model to be robust to real clinical noise. We let FLAN-T5 handle and model any inconcistencies in language.
 
 Each input is embedded into a fixed instruction prompt:
 ```
@@ -199,7 +200,7 @@ We run training over all 150k rows across 5 epochs, using the default parameters
 
 The training loss curve shows a steep drop during the first ~2,000 steps, indicating that the model rapidly learns the relationship between reports and their summaries. This is not a suprise, considering the richness of each epoch. After this convergence, however, we begin to see diminishing returns, with loss slowly decreasing. This reflects smaller refinements to phrasing and style. 
 
-Note that the periodic spikes at the start of each epoch are an artefact of gradient accumulation rather than training instability. Because the model accumulates gradients for several batches before performing the first optimiser step, the logged loss during these early batches is divided by the accumulation factor which artificially inflates it.
+Note that the periodic spikes at the start of each epoch are an artefact of gradient accumulation rather than training instability. Because the model accumulates gradients for several batches before performing the first optimiser step, it computes loss using weights that have not yet been updated. As a result, the logged loss appears higher during these early batches and then drops quickly once the first few updates occur. 
 
 ### 7.2 Validation
 
@@ -267,15 +268,14 @@ This section summarises the key training settings, LoRA configuration, model siz
 Across the selected examples, two broad failure modes emerge:
 1. `Overly Clinical Language`
 
-In the 4th sample, the model produces a summary that is technically accurate but fails to fully simplify it. Instead of paraphrasing jargon such as “sternotomy”, “cerclage”, and “pleura”, it repeats these clinical terms almost unchanged. This behaviour appears when the input consists of a dense cluster of specialised terms with no surrounding context. Each sentence in the report is essentially a list of named medical findings rather than descriptions of processes or effects. This is not a hallucination issue, it is concept-mapping failure caused by the structure of the input. In general, the model performs well when it can see *why* a clinical entity is mentioned (e.g. "pneumothorax in the upper right lobe"). But when the report is simply a stack of nouns, the model cannot reliably identify which concepts are important and therefore does not rewrite them.
+In the 4th sample, the model produces a summary that is technically accurate but fails to fully simplify it. Instead of paraphrasing jargon such as “sternotomy”, “cerclage”, and “pleura”, it repeats these clinical terms almost unchanged. This behaviour appears when the input consists of a dense cluster of specialised terms with no surrounding context. Each sentence in the report is essentially a list of named medical findings rather than descriptions of processes or effects. This is a concept-mapping failure caused by the structure of the input. In general, the model performs well when it can see *why* a clinical entity is mentioned (e.g. "pneumothorax in the upper right lobe"). Sequence models rely heavily on context windows, relational cues and patterns, but when the report is simply a stack of nouns, the model struggles under a lack of signal / context needed to rewrite the medical terms.
 
 2. `Semantic Drift on Rare Clinical Patterns`
 
-We can observe a hallucination issue on the 3rd sample. The model incorrectly describes a 'persistent apical pneumothorax' as a collapsed lung which is somewhat related but not medically equivalent. This suggests that the model occasionally substitutes a more familiar medical concept when faced with highly specific terms. These errors tend to be small, but they directly affect factual correctness.
+We can observe a hallucination issue on the 3rd sample. The model incorrectly describes a 'persistent apical pneumothorax' as a 'collapsed lung', which is somewhat related but not medically equivalent. This suggests that the model occasionally substitutes a more familiar medical concept when faced with highly specific terms. These errors tend to be small, but they directly affect factual correctness.
 
 
-It's worth noting that these failure examples took an effort to find. Despite these issues, the model shows strong reliability across most cases, especially when the input phrasing is common in the training corpus. It rarely invents findings, avoids major hallucinations, and generally preserves clinical meaning. Its failures are not insignificant and are worth noting, but they represent specific edge cases rather than a complete systemic failure.
-
+Despite these issues, the model shows strong reliability across most cases, especially when the input phrasing is common in the training corpus. The model seldom invents findings, avoids major hallucinations, and generally preserves clinical meaning. However, failures do occur when the input consists largely of isolated, highly specific medical terms with no explanatation. For instance, phrases such as "persistent right apical pneumothorax." or "hiatal hernia" provide little contextual structure for the model to interpret. In these cases, the model either repeats the terms verbatim rather than simplifying, or substitutes to a basic concept that may not be medically equivalent.
 
 
 
